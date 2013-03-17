@@ -70,10 +70,13 @@ static int a6_tp_irq_count = 0;
 static int a6_t2s_dup_correct = 0;
 static int a6_disable_dock_switch = 0;
 
-module_param_named(
-		   disable_dock_switch, a6_disable_dock_switch, int,
-		   S_IRUGO | S_IWUSR | S_IWGRP
-		  );
+static int param_set_disable_dock_switch(const char *val, struct kernel_param *kp);
+param_check_int(disable_dock_switch, &(a6_disable_dock_switch));
+module_param_call(disable_dock_switch, param_set_disable_dock_switch,
+	param_get_int, &a6_disable_dock_switch,
+	S_IRUGO | S_IWUSR | S_IWGRP
+	);
+__MODULE_PARM_TYPE(disable_dock_switch, int);
 
 module_param_named(
 		   debug_mask, a6_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
@@ -4638,7 +4641,7 @@ void a6_charger_event (int otg_chg_type)
 EXPORT_SYMBOL (a6_charger_event);
 
 #define A6_BATT_HB_PERIOD (msecs_to_jiffies (5*60*1000))
-#define A6_INIT_CONNECTED_PS_DELAY (msecs_to_jiffies (30*1000))
+#define A6_INIT_CONNECTED_PS_DELAY (msecs_to_jiffies (60*1000))
 static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
 {
 	int percent = 0;
@@ -4755,6 +4758,19 @@ static void a6_dock_update_state(struct a6_device_state *state)
 		dock = value & TS2_I2C_FLAGS_2_PUCK ? 1 : 0;
 	}
 	switch_set_state(state->dock_switch, dock);
+}
+
+static int param_set_disable_dock_switch(const char *val,
+		struct kernel_param *kp)
+{
+	struct a6_device_state *state;
+
+	state = batt_state;
+
+	param_set_int(val, kp);
+	a6_dock_update_state(state);
+
+	return 0;
 }
 
 static int a6_dock_probe(struct a6_device_state *state)

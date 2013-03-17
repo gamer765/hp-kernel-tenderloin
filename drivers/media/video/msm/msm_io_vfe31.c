@@ -134,20 +134,20 @@ void __iomem *camifpadbase, *csibase;
 void msm_io_w(u32 data, void __iomem *addr)
 {
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
-	writel((data), (addr));
+	writel_relaxed((data), (addr));
 }
 
 void msm_io_w_mb(u32 data, void __iomem *addr)
 {
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	wmb();
-	writel((data), (addr));
+	writel_relaxed((data), (addr));
 	wmb();
 }
 
 u32 msm_io_r(void __iomem *addr)
 {
-	uint32_t data = readl(addr);
+	uint32_t data = readl_relaxed(addr);
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	return data;
 }
@@ -156,7 +156,7 @@ u32 msm_io_r_mb(void __iomem *addr)
 {
 	uint32_t data;
 	rmb();
-	data = readl(addr);
+	data = readl_relaxed(addr);
 	rmb();
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	return data;
@@ -170,7 +170,7 @@ void msm_io_memcpy_toio(void __iomem *dest_addr,
 	u32 *s = (u32 *) src_addr;
 	/* memcpy_toio does not work. Use writel for now */
 	for (i = 0; i < len; i++)
-		writel(*s++, d++);
+		writel_relaxed(*s++, d++);
 }
 
 void msm_io_dump(void __iomem *addr, int size)
@@ -187,7 +187,7 @@ void msm_io_dump(void __iomem *addr, int size)
 			sprintf(p_str, "%08x: ", (u32) p);
 			p_str += 10;
 		}
-		data = readl(p++);
+		data = readl_relaxed(p++);
 		sprintf(p_str, "%08x ", data);
 		p_str += 9;
 		if ((i + 1) % 4 == 0) {
@@ -491,6 +491,23 @@ void msm_camio_clk_rate_set_2(struct clk *clk, int rate)
 void msm_camio_clk_set_min_rate(struct clk *clk, int rate)
 {
 	clk_set_min_rate(clk, rate);
+}
+
+void msm_camio_vfe_clk_set(enum msm_s_setting s_setting)
+{
+	switch (s_setting) {
+		case S_RES_PREVIEW:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_PREV;
+			CDBG("Set VFE clk for Preview\n");
+			break;
+		case S_RES_CAPTURE:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_SNAP;
+			CDBG("Set VFE clk for Snapshot\n");
+			break;
+		default:
+			return;
+	}
+	msm_camio_clk_rate_set_2(camio_vfe_clk, camio_clk.vfe_clk_rate);
 }
 
 static irqreturn_t msm_io_csi_irq(int irq_num, void *data)

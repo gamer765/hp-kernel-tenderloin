@@ -22,12 +22,17 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
 
 #include <mach/scm.h>
 #include <mach/msm_iomap.h>
+#include <mach/msm_xo.h>
 
 #include "peripheral-loader.h"
 #include "clock-8x60.h"
+
+#define PROXY_VOTE_TIMEOUT		10000
 
 #define MSM_MMS_REGS_BASE		0x10200000
 #define MSM_LPASS_QDSP6SS_BASE		0x28800000
@@ -58,10 +63,12 @@
 #define QDSP6SS_STRAP_AHB		(msm_lpass_qdsp6ss_base + 0x0020)
 
 #define PPSS_RESET			(MSM_CLK_CTL_BASE + 0x2594)
+#define PPSS_PROC_CLK_CTL		(MSM_CLK_CTL_BASE + 0x2588)
 
 #define PAS_MODEM	0
 #define PAS_Q6		1
 #define PAS_DSPS	2
+#define PAS_PLAYREADY	3
 
 #define PAS_INIT_IMAGE_CMD	1
 #define PAS_MEM_CMD		2
@@ -154,6 +161,8 @@ static int init_image_dsps_untrusted(const u8 *metadata, size_t size)
 {
 	struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
 	dsps_start = ehdr->e_entry;
+	/* Bring memory and bus interface out of reset */
+	writel(0x2, PPSS_RESET);
 	return 0;
 }
 
@@ -177,9 +186,35 @@ static int auth_and_reset_trusted(int id)
 	return resp.reset_initiated;
 }
 
+static struct msm_xo_voter *pxo;
+static void remove_modem_proxy_votes(unsigned long data)
+{
+	msm_xo_mode_vote(pxo, MSM_XO_MODE_OFF);
+}
+DEFINE_TIMER(modem_timer, remove_modem_proxy_votes, 0, 0);
+
+static void make_modem_proxy_votes(void)
+{
+	/* Make proxy votes for modem and set up timer to disable it. */
+	msm_xo_mode_vote(pxo, MSM_XO_MODE_ON);
+	mod_timer(&modem_timer, jiffies + msecs_to_jiffies(PROXY_VOTE_TIMEOUT));
+}
+
+static void remove_modem_proxy_votes_now(void)
+{
+	/*
+	 * If the modem proxy vote hasn't been removed yet, them remove the
+	 * votes immediately.
+	 */
+	if (del_timer(&modem_timer))
+		remove_modem_proxy_votes(0);
+}
+
 static int reset_modem_untrusted(void)
 {
 	u32 reg;
+
+	make_modem_proxy_votes();
 
 	/* Put modem AHB0,1,2 clocks into reset */
 	writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
@@ -249,7 +284,15 @@ static int reset_modem_untrusted(void)
 
 static int reset_modem_trusted(void)
 {
-	return auth_and_reset_trusted(PAS_MODEM);
+	int ret;
+
+	make_modem_proxy_votes();
+
+	ret = auth_and_reset_trusted(PAS_MODEM);
+	if (ret)
+		remove_modem_proxy_votes_now();
+
+	return ret;
 }
 
 static int shutdown_trusted(int id)
@@ -257,6 +300,8 @@ static int shutdown_trusted(int id)
 	int ret;
 	struct pas_shutdown_req request;
 	struct pas_shutdown_resp resp = {0};
+
+	remove_modem_proxy_votes_now();
 
 	request.proc = id;
 	ret = scm_call(SCM_SVC_PIL, PAS_SHUTDOWN_CMD, &request, sizeof(request),
@@ -270,6 +315,8 @@ static int shutdown_trusted(int id)
 static int shutdown_modem_untrusted(void)
 {
 	u32 reg;
+
+	remove_modem_proxy_votes_now();
 
 	/* Put modem into reset */
 	writel(0x1, MARM_RESET);
@@ -338,15 +385,36 @@ static int shutdown_modem_trusted(void)
 #define Q6_STRAP_TCM_BASE	(0x28C << 15)
 #define Q6_STRAP_TCM_CONFIG	0x28B
 
+static void remove_q6_proxy_votes(unsigned long data)
+{
+	local_src_disable(PLL_4);
+}
+static DEFINE_TIMER(q6_timer, remove_q6_proxy_votes, 0, 0);
+
+static void make_q6_proxy_votes(void)
+{
+	/* Make proxy votes for Q6 and set up timer to disable it. */
+	local_src_enable(PLL_4);
+	mod_timer(&q6_timer, jiffies + msecs_to_jiffies(PROXY_VOTE_TIMEOUT));
+}
+
+static void remove_q6_proxy_votes_now(void)
+{
+	/*
+	 * If the Q6 proxy vote hasn't been removed yet, them remove the
+	 * votes immediately.
+	 */
+	if (del_timer(&q6_timer))
+		remove_q6_proxy_votes(0);
+}
+
 static int reset_q6_untrusted(void)
 {
-	int ret;
 	u32 reg;
 
-	ret = local_src_enable(PLL_4);
-	if (ret)
-		goto err;
+	make_q6_proxy_votes();
 
+	usleep(5);
 	/* Put Q6 into reset */
 	reg = readl(LCC_Q6_FUNC);
 	reg |= Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES | STOP_CORE |
@@ -362,6 +430,7 @@ static int reset_q6_untrusted(void)
 		CORE_TCM_MEM_PERPH_EN;
 	writel(reg, LCC_Q6_FUNC);
 
+	usleep(5);
 	/* Turn on Q6 core clocks and take core out of reset */
 	reg &= ~(CLAMP_IO | Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES |
 			CORE_ARES);
@@ -369,32 +438,29 @@ static int reset_q6_untrusted(void)
 
 	/* Wait for clocks to be enabled */
 	mb();
+	usleep(5);
 	/* Program boot address */
 	writel((q6_start >> 12) & 0xFFFFF, QDSP6SS_RST_EVB);
 
+	usleep(5);
 	writel(Q6_STRAP_TCM_CONFIG | Q6_STRAP_TCM_BASE, QDSP6SS_STRAP_TCM);
 	writel(Q6_STRAP_AHB_UPPER | Q6_STRAP_AHB_LOWER, QDSP6SS_STRAP_AHB);
 
+	usleep(5);
 	/* Wait for addresses to be programmed before starting Q6 */
 	mb();
 
+	usleep(5);
 	/* Start Q6 instruction execution */
 	reg &= ~STOP_CORE;
 	writel(reg, LCC_Q6_FUNC);
 
 	return 0;
-
-err:
-	return ret;
 }
 
 static int reset_q6_trusted(void)
 {
-	int ret;
-
-	ret = local_src_enable(PLL_4);
-	if (ret)
-		return ret;
+	make_q6_proxy_votes();
 
 	return auth_and_reset_trusted(PAS_Q6);
 }
@@ -409,16 +475,28 @@ static int shutdown_q6_untrusted(void)
 		CORE_TCM_MEM_PERPH_EN);
 	reg |= CLAMP_IO | CORE_GFM4_CLK_EN;
 	writel(reg, LCC_Q6_FUNC);
+
+	remove_q6_proxy_votes_now();
+
 	return 0;
 }
 
 static int shutdown_q6_trusted(void)
 {
-	return shutdown_trusted(PAS_Q6);
+	int ret;
+
+	ret = shutdown_trusted(PAS_Q6);
+	if (ret)
+		return ret;
+
+	remove_q6_proxy_votes_now();
+
+	return 0;
 }
 
 static int reset_dsps_untrusted(void)
 {
+	writel(0x10, PPSS_PROC_CLK_CTL);
 	/* Bring DSPS out of reset */
 	writel(0x0, PPSS_RESET);
 	return 0;
@@ -436,8 +514,24 @@ static int shutdown_dsps_trusted(void)
 
 static int shutdown_dsps_untrusted(void)
 {
-	writel(0x3, PPSS_RESET);
+	writel(0x2, PPSS_RESET);
+	writel(0x0, PPSS_PROC_CLK_CTL);
 	return 0;
+}
+
+static int init_image_playready(const u8 *metadata, size_t size)
+{
+	return init_image_trusted(PAS_PLAYREADY, metadata, size);
+}
+
+static int reset_playready(void)
+{
+	return auth_and_reset_trusted(PAS_PLAYREADY);
+}
+
+static int shutdown_playready(void)
+{
+	return shutdown_trusted(PAS_PLAYREADY);
 }
 
 struct pil_reset_ops pil_modem_ops = {
@@ -459,6 +553,13 @@ struct pil_reset_ops pil_dsps_ops = {
 	.verify_blob = verify_blob,
 	.auth_and_reset = reset_dsps_untrusted,
 	.shutdown = shutdown_dsps_untrusted,
+};
+
+struct pil_reset_ops pil_playready_ops = {
+	.init_image = init_image_playready,
+	.verify_blob = verify_blob,
+	.auth_and_reset = reset_playready,
+	.shutdown = shutdown_playready,
 };
 
 static struct pil_device peripherals[] = {
@@ -487,6 +588,14 @@ static struct pil_device peripherals[] = {
 		},
 		.ops = &pil_dsps_ops,
 	},
+	{
+		.name = "playrdy",
+		.pdev = {
+			.name = "pil_playready",
+			.id = -1,
+		},
+		.ops = &pil_playready_ops,
+	},
 };
 
 
@@ -508,6 +617,10 @@ static int __init msm_peripheral_reset_init(void)
 	if (!msm_lpass_qdsp6ss_base)
 		goto err_lpass;
 
+	pxo = msm_xo_get(MSM_XO_PXO, "pil");
+	if (IS_ERR(pxo))
+		goto err_pxo;
+
 	if (SECURE_PIL) {
 		pil_modem_ops.init_image = init_image_modem_trusted;
 		pil_modem_ops.auth_and_reset = reset_modem_trusted;
@@ -527,6 +640,8 @@ static int __init msm_peripheral_reset_init(void)
 
 	return 0;
 
+err_pxo:
+	iounmap(msm_lpass_qdsp6ss_base);
 err_lpass:
 	iounmap(msm_mms_regs_base);
 err:

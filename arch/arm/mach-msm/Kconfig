@@ -1051,6 +1051,15 @@ config MSM8X60_AUDIO
 	help
 	  Enable support for qdsp6v2. This provides audio functionality.
 
+config MSM8X60_RTAC
+	tristate "MSM8X60 real-time audio calibration support"
+	depends on MSM8X60_AUDIO
+	default n
+	help
+	  Enable support for rtac in qdsp6v2. This enables calibration during
+	  audio operation
+
+
 config MSM_VREG_SWITCH_INVERTED
 	bool "Reverse vreg switch polarity"
 	default n
@@ -1215,6 +1224,14 @@ config MSM_SCM
 	bool "Secure Channel Manager (SCM) support"
 	default n
 
+config MSM_SUBSYSTEM_RESTART
+	bool "MSM Subsystem Restart Driver"
+	depends on ARCH_MSM8X60
+	default n
+	help
+	  This option enables the MSM subsystem restart driver, which provides
+	  a framework to handle subsystem crashes.
+
 config SCORPION_Uni_45nm_BUG
 	bool "Scorpion Uni 45nm(SC45U): Workaround for ICIMVAU and BPIMVA"
 	depends on ARCH_MSM7X30 || (ARCH_QSD8X50 && MSM_SOC_REV_A)
@@ -1243,7 +1260,7 @@ config MSM_RPM_LOG
 	  via a debugfs node.
 
 config MSM_RPM_STATS_LOG
-	tristate "MSM Resource Power Manager Stat Driver
+	tristate "MSM Resource Power Manager Stat Driver"
 	depends on DEBUG_FS
 	depends on ARCH_MSM8X60
 	default n
@@ -1351,5 +1368,10 @@ config BT_MSM_PINTEST
 config MSM_FORCE_FAST_CPU_TABLE
     bool "Enable CPU table with higher clock rates"
     depends on ARCH_MSM8X60
+    default n
+
+config RESTART_USES_PALM_BOOTLOADER
+    bool "Enable Restart (Reboot/Shutdown) using HPalm bootloader"
+	depends on MACH_TENDERLOIN
     default n
 endif

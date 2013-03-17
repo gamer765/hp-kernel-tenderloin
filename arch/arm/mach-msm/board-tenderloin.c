@@ -107,7 +107,7 @@
 #include <linux/mfd/wm8994/core.h>
 #endif
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
 
@@ -135,6 +135,7 @@
 #ifdef CONFIG_MAX8903B_CHARGER
 static unsigned max8903b_ps_connected = 0;
 static unsigned max8903b_vbus_draw_ma = 0;
+static unsigned max8903b_vbus_draw_ma_max = 0;
 void max8903b_set_vbus_draw (unsigned ma);
 #endif
 
@@ -815,7 +816,7 @@ static irqreturn_t pmic_id_on_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 
 static struct usb_ether_platform_data rndis_pdata = {
 	/* ethaddr is filled by board_serialno_setup */
@@ -1450,10 +1451,9 @@ void max8903b_set_connected_ps (unsigned connected)
 
 	if (!connected) {
 		max8903b_disable_charge();
+		max8903b_vbus_draw_ma_max = 0;
 	} else if (connected & MAX8903B_CONNECTED_PS_DOCK) {
 		max8903b_set_charge_ma(MAX8903B_DOCK_DRAW_MA);
-	} else {
-		max8903b_set_charge_ma(max8903b_vbus_draw_ma);
 	}
 }
 EXPORT_SYMBOL (max8903b_set_connected_ps);
@@ -1466,8 +1466,16 @@ void max8903b_set_vbus_draw (unsigned ma)
 {
 	max8903b_vbus_draw_ma = ma;
 
+	if (ma > max8903b_vbus_draw_ma_max) {
+		max8903b_vbus_draw_ma_max = ma;
+	}
+
 	if (!(max8903b_ps_connected & MAX8903B_CONNECTED_PS_DOCK)) {
-		max8903b_set_charge_ma(ma);
+		if (max8903b_ps_connected & MAX8903B_CONNECTED_PS_AC) {
+			max8903b_set_charge_ma(max8903b_vbus_draw_ma_max);
+		} else {
+			max8903b_set_charge_ma(ma);
+		}
 	}
 }
 #endif  /* CONFIG_MAX8903B_CHARGER */
@@ -1625,10 +1633,10 @@ static struct lsm303dlh_acc_platform_data lsm303dlh_acc_pdata = {
 	.poll_interval = 200,
 	.min_interval = 10,
 	.g_range = LSM303DLH_ACC_G_2G,
-	.axis_map_x = 0,
-	.axis_map_y = 1,
+	.axis_map_x = 1,
+	.axis_map_y = 0,
 	.axis_map_z = 2,
-	.negate_x = 0,
+	.negate_x = 1,
 	.negate_y = 0,
 	.negate_z = 0,
 	.gpio_int1 = -1,
@@ -1639,10 +1647,10 @@ static struct lsm303dlh_mag_platform_data lsm303dlh_mag_pdata = {
 	.poll_interval = 200,
 	.min_interval = 10,
 	.h_range = LSM303DLH_MAG_H_4_0G,
-	.axis_map_x = 0,
-	.axis_map_y = 1,
+	.axis_map_x = 1,
+	.axis_map_y = 0,
 	.axis_map_z = 2,
-	.negate_x = 0,
+	.negate_x = 1,
 	.negate_y = 0,
 	.negate_z = 0,
 };
@@ -2388,22 +2396,52 @@ static struct platform_device msm_batt_device = {
 };
 #endif
 
+#ifdef CONFIG_FB_MSM_LCDC_DSUB
+ /* VGA = 1440 x 900 x 4(bpp) x 2(pages)
+    prim = 1024 x 600 x 4(bpp) x 2(pages)
+    This is the difference. */
+#define MSM_FB_DSUB_PMEM_ADDER (0x9E3400-0x4B0000)
+#else
+#define MSM_FB_DSUB_PMEM_ADDER (0)
+#endif
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 3) /* 4 bpp x 3 pages */
+#else
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 2) /* 4 bpp x 2 pages */
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-/* prim = 1024 x 768 x 4(bpp) x 2(pages)
- * hdmi = 1920 x 1080 x 2(bpp) x 1(page)
- * Note: must be multiple of 4096 */
-#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
-/*
- * 0x900000 = 1024 x 768 x 4 x 3
- * For FB1 we need an extra 0x1C2000 to allow scaling of legacy games
- * 0x1C2000 is 320x480x4x3 and is needed by the rotator
- * to allowing copying between render targets
- */
-#define MSM_FB0_SIZE 0x900000
-#define MSM_FB1_SIZE 0xAC2000
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+#define MSM_FB_EXT_BUF_SIZE  (1920 * 1080 * 2 * 1) /* 2 bpp x 1 page */
+#elif defined(CONFIG_FB_MSM_TVOUT)
+#define MSM_FB_EXT_BUF_SIZE  (720 * 576 * 2 * 2) /* 2 bpp x 2 pages */
+#else
+#define MSM_FB_EXT_BUF_SIZE     0
+#endif
+
+#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
+/* width x height x 3 bpp x 2 frame buffer */
+#define MSM_FB_WRITEBACK_SIZE (1024 * 768 * 3 * 2)
+#define MSM_FB_WRITEBACK_OFFSET  \
+                (MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
+#else
+#define MSM_FB_WRITEBACK_SIZE   0
+#define MSM_FB_WRITEBACK_OFFSET 0
+#endif
+
+
+/* Note: must be multiple of 4096 */
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
+                                 MSM_FB_WRITEBACK_SIZE + \
+                                 MSM_FB_DSUB_PMEM_ADDER, 4096)
 
 #define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
+
+static int writeback_offset(void)
+{
+         return MSM_FB_WRITEBACK_OFFSET;
+}
+
 #define MSM_OVERLAY_BLT_SIZE roundup(0x500000, 4096)
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
@@ -2432,7 +2470,7 @@ static int __init fb_args(char *str)
 }
 early_param("fb", fb_args);
 
-static unsigned fb_size = MSM_FB0_SIZE;
+static unsigned fb_size = MSM_FB_SIZE;
 static int __init fb_size_setup(char *p)
 {
 	fb_size = memparse(p, NULL);
@@ -2608,7 +2646,7 @@ static void __init msm8x60_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
-	size = MSM_FB0_SIZE;
+	size = MSM_FB_SIZE;
 	if(fb_phys) {
 		addr = (void *)fb_phys;
 		msm_fb_resources[0].start = (unsigned long)addr;
@@ -2623,14 +2661,14 @@ static void __init msm8x60_allocate_memory_regions(void)
 		pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 			size, addr, __pa(addr));
 	}
-
+#if 0
 	size = MSM_FB1_SIZE;
 	addr = alloc_bootmem(size);
 	msm_fb_resources[1].start = __pa(addr);
 	msm_fb_resources[1].end = msm_fb_resources[1].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb1\n",
 		size, addr, __pa(addr));
-
+#endif
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 	size = pmem_kernel_ebi1_size;
 	if (size) {
@@ -3502,18 +3540,6 @@ static struct user_pin bt_pins[] = {
 		.irq_config = IRQF_TRIGGER_RISING,
 		.irq_handle_mode = IRQ_HANDLE_AUTO
 	},
-	{
-		.name       =  "isl",
-		.gpio       =  126,
-		.act_level  =  0, // active low
-		.direction  =  1, // output
-		.def_level  =  0, // low
-		.pin_mode   =  (void *)-1,// undefined
-		.sysfs_mask =  0777,
-		.options    =  0,
-		.irq_handler = NULL,
-		.irq_config =  0,
-	},
 };
 
 static struct user_pin_set  board_user_pins_sets[] = {
@@ -3856,6 +3882,9 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 	&msm_dsps_device,
 #endif
 
+#ifdef CONFIG_MAX8903B_CHARGER
+	&max8903b_charger_device,
+#endif
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_HCD)
 	&msm_device_otg,
 #endif
@@ -3864,9 +3893,6 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 #endif
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
-#endif
-#ifdef CONFIG_MAX8903B_CHARGER
-	&max8903b_charger_device,
 #endif
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 	&android_pmem_kernel_ebi1_device,
@@ -3884,7 +3910,11 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 	&msm_rotator_device,
 #endif
 	&msm_fb_device,
-	&msm_device_kgsl,
+	&msm_kgsl_3d0,
+#ifdef CONFIG_MSM_KGSL_2D
+	&msm_kgsl_2d0,
+	&msm_kgsl_2d1,
+#endif
 #ifdef CONFIG_FB_MSM_LCDC_LG_XGA_PANEL
 	&lcdc_lg_panel_device,
 #endif
@@ -4564,9 +4594,27 @@ static int wm8994_ldo_power(int enable)
 
 static unsigned int msm_wm8958_setup_power(void)
 {
+	static struct regulator *tp_5v0 = NULL;
 	int rc=0;
 
 	pr_err("%s: codec power setup\n", __func__);
+
+	if (!tp_5v0) {
+		tp_5v0 = regulator_get(NULL, "vdd50_boost");
+		if (IS_ERR(tp_5v0)) {
+			pr_err("failed to get regulator 'vdd50_boost' with %ld\n",
+				PTR_ERR(tp_5v0));
+			tp_5v0 = NULL;
+		}
+	}
+
+	if (tp_5v0) {
+		rc = regulator_enable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to enable regulator 'vdd50_boost' with %d\n", rc);
+		}
+	}
+
 	vreg_wm8958 = regulator_get(NULL, "8058_s3");
 	if (IS_ERR(vreg_wm8958)) {
 		pr_err("%s: Unable to get 8058_s3\n", __func__);
@@ -4590,9 +4638,29 @@ static unsigned int msm_wm8958_setup_power(void)
 
 static void msm_wm8958_shutdown_power(void)
 {
+	static struct regulator *tp_5v0 = NULL;
 	int rc;
+
 	pr_err("%s: codec power shutdown\n", __func__);
+
+	if (!tp_5v0) {
+		tp_5v0 = regulator_get(NULL, "vdd50_boost");
+		if (IS_ERR(tp_5v0)) {
+			pr_err("failed to get regulator 'vdd50_boost' with %ld\n",
+				PTR_ERR(tp_5v0));
+			tp_5v0 = NULL;
+		}
+	}
+
+	if (tp_5v0) {
+		rc = regulator_disable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to disable regulator 'vdd50_boost' with %d\n", rc);
+		}
+	}
+
 	wm8994_ldo_power(0);
+
 	rc = regulator_disable(vreg_wm8958);
 
 	if (rc)
@@ -4738,7 +4806,10 @@ static void fixup_i2c_configs(void)
 
 #ifdef CONFIG_INPUT_LSM303DLH
 	if (machine_is_tenderloin() && boardtype_is_3g()) {
-		lsm303dlh_acc_pdata.negate_x = 1;
+		lsm303dlh_acc_pdata.negate_y = 1;
+		lsm303dlh_acc_pdata.negate_z = 1;
+		lsm303dlh_mag_pdata.negate_y = 1;
+		lsm303dlh_mag_pdata.negate_z = 1;
 	}
 #endif
 #endif
@@ -5149,6 +5220,12 @@ int board_sdio_wifi_disable(unsigned int param)
 	return 0;
 }
 EXPORT_SYMBOL(board_sdio_wifi_disable);
+
+int board_get_wow_pin()
+{
+	return pin_table[TENDERLOIN_GPIO_HOST_WAKE_WL_PIN];
+}
+EXPORT_SYMBOL(board_get_wow_pin);
 
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
@@ -6242,6 +6319,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
+	.mdp_rev = MDP_REV_41,
 };
 
 #ifdef CONFIG_FB_MSM_TVOUT
@@ -6775,7 +6853,9 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
+#ifdef CONFIG_MSM_KGSL_2D
 	msm8x60_check_2d_hardware();
+#endif
 
 	/* Change SPM handling of core 1 if PMM 8160 is present. */
 	soc_platform_version = socinfo_get_platform_version();
@@ -6902,8 +6982,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	}
 #endif
 
-#ifdef CONFIG_USB_ANDROID
-    platform_device_register(&usb_diag_device);
+#ifdef CONFIG_USB_G_ANDROID
+//    platform_device_register(&usb_diag_device);
     android_usb_pdata.products[0].product_id =
 		android_usb_pdata.product_id;
     platform_device_register(&usb_mass_storage_device);
