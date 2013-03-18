@@ -2060,6 +2060,119 @@ int32_t a6_init_state(struct i2c_client *client)
 		goto err0;
 	}
 
+	/* Fix for occasional A6 continously
+		sending IRQ's */
+
+	if (state->plat_data->power_supply_connected == 1) {
+
+		/* read and write BAT_TEMP_LOW_LSB_MSB if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_TEMP_LOW_LSB_MSB];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_temp_low_lsb ||
+					vals[1] != state->plat_data->bat_temp_low_msb) {
+			vals[0] = state->plat_data->bat_temp_low_lsb;
+			vals[1] = state->plat_data->bat_temp_low_msb;
+			printk(KERN_INFO"%s: Setting %s to 0x%02X%02X\n", __func__, reg_desc->debug_name, vals[0],vals[1]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+
+		/* read and write BAT_TEMP_HIGH_LSB_MSB if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_TEMP_HIGH_LSB_MSB];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_temp_high_lsb ||
+					vals[1] != state->plat_data->bat_temp_high_msb) {
+			vals[0] = state->plat_data->bat_temp_high_lsb;
+			vals[1] = state->plat_data->bat_temp_high_msb;
+			printk(KERN_INFO"%s: Setting %s to 0x%02X%02X\n", __func__, reg_desc->debug_name, vals[0],vals[1]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+	    }
+
+		/* read and write BAT_VOLT_LOW_LSB_MSB if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_VOLT_LOW_LSB_MSB];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_volt_low_lsb ||
+					vals[1] != state->plat_data->bat_volt_low_msb) {
+			vals[0] = state->plat_data->bat_volt_low_lsb;
+			vals[1] = state->plat_data->bat_volt_low_msb;
+			printk(KERN_INFO"%s: Setting %s to 0x%02X%02X\n", __func__, reg_desc->debug_name, vals[0],vals[1]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+
+		/* read and write BAT_TEMP_LOW_LSB_MSB if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_TEMP_LOW_LSB_MSB];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_temp_low_lsb ||
+					vals[1] != state->plat_data->bat_temp_low_msb) {
+			vals[0] = state->plat_data->bat_temp_low_lsb;
+			vals[1] = state->plat_data->bat_temp_low_msb;
+			printk(KERN_INFO"%s: Setting %s to %02X%02X\n", __func__, reg_desc->debug_name, vals[0],vals[1]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+
+
+		/* read and write BAT_RARC_CRIT if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_RARC_CRIT];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_rarc_crit) {
+			vals[0] = state->plat_data->bat_rarc_crit;
+			printk(KERN_INFO"%s: Setting %s to %d\n", __func__, reg_desc->debug_name, vals[0]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+
+		/* read and write BAT_RARC_LOW_2 if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_RARC_LOW_2];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_rarc_low2) {
+			vals[0] = state->plat_data->bat_rarc_low2;
+			printk(KERN_INFO"%s: Setting %s to %d\n", __func__, reg_desc->debug_name, vals[0]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+
+		/* read and write BAT_RARC_LOW_1 if needed */
+		reg_desc = &a6_register_desc_arr[A6_REG_TS2_I2C_BAT_RARC_LOW_1];
+		memset(vals, 0, sizeof(vals));
+		ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: error reading %s\n", __func__, reg_desc->debug_name);
+		} else if (vals[0] != state->plat_data->bat_rarc_low1) {
+			vals[0] = state->plat_data->bat_rarc_low1;
+			printk(KERN_INFO"%s: Setting %s to %d\n", __func__, reg_desc->debug_name, vals[0]);
+			ret = a6_i2c_write_reg(client, reg_desc->id, reg_desc->num_ids, vals);
+			if (ret < 0)
+				printk(KERN_ERR "%s: error writing %s\n", __func__, reg_desc->debug_name);
+		}
+	}
+
 	/* (4) enable irqs:
 	       MASK_BAT_TEMP_HIGH, MASK_BAT_TEMP_LOW,
 	       MASK_BAT_VOLT_LOW, MASK_BAT_RARC_CRIT,
@@ -4038,7 +4151,7 @@ void a6_irq_work_handler(struct work_struct *work)
 	if (reg_val_status3) {
 		/* emergency reset? */
 		if (reg_val_status3 & TS2_I2C_INT_3_RESET) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: emergency reset detected.\n",
+			printk(KERN_INFO "%s: emergency reset detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4053,9 +4166,7 @@ void a6_irq_work_handler(struct work_struct *work)
 			struct a6_register_desc *reg_desc_charger;
 			uint8_t chg_vals[id_size];
 
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: a2a connect change detected.\n",
-				   __func__);
-			printk(KERN_ERR "%s: a2a connect change detected.\n", __func__);
+			printk(KERN_INFO "%s: a2a connect change detected.\n", __func__);
 			reg_desc_charger = &a6_register_desc_arr[31];
 			memset(chg_vals, 0, sizeof(chg_vals));
 			if (a6_i2c_read_reg(state->i2c_dev, reg_desc_charger->id,
@@ -4078,7 +4189,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* charger-source change? */
 		if (reg_val_status3 & TS2_I2C_INT_3_FLAGS_CHANGE) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: charger-source change detected.\n",
+			printk(KERN_INFO "%s: charger-source change detected.\n",
 				   __func__);
 
 			/* next, unblock task on charger_source_notify node */
@@ -4090,7 +4201,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* log threshold change? */
 		if (reg_val_status3 & TS2_I2C_INT_3_LOG) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: log threshold detected.\n",
+			printk(KERN_INFO "%s: log threshold detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4102,7 +4213,7 @@ void a6_irq_work_handler(struct work_struct *work)
 	if (reg_val_status2) {
 		/* battery low critical? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_RARC_CRIT) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery low critical detected.\n",
+			printk(KERN_INFO "%s: battery low critical detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4112,7 +4223,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* battery voltage low critical? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_VOLT_LOW) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery voltage low critical detected.\n",
+			printk(KERN_INFO "%s: battery voltage low critical detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4122,7 +4233,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* battery temp high critical? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_TEMP_HIGH) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery temp high critical detected.\n",
+			printk(KERN_INFO "%s: battery temp high critical detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4131,7 +4242,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* battery temp low critical? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_TEMP_LOW) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery temp low critical detected.\n",
+			printk(KERN_INFO "%s: battery temp low critical detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4140,7 +4251,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* battery low percent warn2? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_RARC_LOW2) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery low percent warn2 detected.\n",
+			printk(KERN_INFO "%s: battery low percent warn2 detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4150,7 +4261,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 		/* battery low percent warn1? */
 		if (reg_val_status2 & TS2_I2C_INT_2_BAT_RARC_LOW1) {
-			A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: battery low percent warn1 detected.\n",
+			printk(KERN_INFO "%s: battery low percent warn1 detected.\n",
 				   __func__);
 
 			/* Send uevent */
@@ -4444,6 +4555,12 @@ static int a6_fish_battery_get_percent(struct device *dev)
 	int temp_val = 0;
 
 	a6_reg_get (dev, A6_REG_TS2_I2C_BAT_RARC, &temp_val);
+
+#if defined(CONFIG_A6_BATTERY_SCALED_MIN) && CONFIG_A6_BATTERY_SCALED_MIN != 0
+	temp_val = (temp_val - CONFIG_A6_BATTERY_SCALED_MIN) * 100
+				/ (100 - CONFIG_A6_BATTERY_SCALED_MIN);
+	if (temp_val < 0) temp_val = 0;
+#endif
 
 	return temp_val;
 }

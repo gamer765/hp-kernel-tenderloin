@@ -52,6 +52,16 @@ struct a6_platform_data {
 
 	int	pwr_gpio_wakeup_cap;  /* set if pwr_gpio is wakeup capable */
 	int	power_supply_connected;	/* Set to 1 if this is the a6 connected to battery, etc */
+
+	uint8_t bat_temp_high_msb;
+	uint8_t bat_temp_high_lsb;
+	uint8_t bat_temp_low_msb;
+	uint8_t bat_temp_low_lsb;
+	uint8_t bat_volt_low_msb;
+	uint8_t bat_volt_low_lsb;
+	uint8_t bat_rarc_crit;
+	uint8_t bat_rarc_low2;
+	uint8_t bat_rarc_low1;
 };
 
 struct a6_wake_ops {

@@ -149,7 +149,7 @@ static ssize_t mdm_poweron_store(struct device *dev,
 static struct device_attribute mdmgpio_attrs[] = {
 	__ATTR(uim_cd_gpio,	0644, uim_cd_gpio_show, uim_cd_gpio_store),
 	__ATTR(mdm_disable_gpio, 0644, mdm_disable_gpio_show, mdm_disable_gpio_store),
-	__ATTR(mdm_poweron, 0644, mdm_poweron_show, mdm_poweron_store),
+	__ATTR(mdm_poweron, 0777, mdm_poweron_show, mdm_poweron_store),
 	__ATTR_NULL,
 };
 
