@@ -877,7 +877,7 @@ static void lsm303dlh_mag_input_cleanup(struct lsm303dlh_mag_data *mag)
 static int lsm303dlh_mag_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
-	struct lsm303dlh_mag_data *mag;
+	struct lsm303dlh_mag_data *mag = lsm303dlh_mag_misc_data;
 
 	int err = -1;
 
